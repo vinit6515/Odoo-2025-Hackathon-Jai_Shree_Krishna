@@ -36,7 +36,7 @@ def show_similar_images(query_path, gallery_folder, top_k=5):
     print("\n🎯 Top Matches:")
     plt.figure(figsize=(15, 5))
     for i, idx in enumerate(top_indices):
-        print(f"{i+1}: {gallery_paths[idx]} (score: {similarities[idx]:.3f})")
+        print(f"{i+1}: {gallery_paths[idx]} (score: {(similarities[idx]/2.0):.3f})")
         img = Image.open(gallery_paths[idx])
         plt.subplot(1, top_k, i+1)
         plt.imshow(img)
