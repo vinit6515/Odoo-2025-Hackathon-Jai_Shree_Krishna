@@ -8,11 +8,321 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
-import { Check, X, Eye, FileText, AlertTriangle, Users, Package, TrendingUp } from "lucide-react"
+import {
+  Check,
+  X,
+  Eye,
+  FileText,
+  AlertTriangle,
+  Users,
+  Package,
+  TrendingUp,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+} from "lucide-react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { adminApi } from "@/lib/api"
 import { LoadingPage } from "@/components/loading-spinner"
+
+interface ItemDetailModalProps {
+  item: any
+  isOpen: boolean
+  onClose: () => void
+  onApprove: (itemId: number) => void
+  onReject: (itemId: number) => void
+}
+
+function ItemDetailModal({ item, isOpen, onClose, onApprove, onReject }: ItemDetailModalProps) {
+  const [currentImageIndex, setCurrentImageIndex] = useState(0)
+  const [showBill, setShowBill] = useState(false)
+
+  if (!item || !isOpen) return null
+
+  const nextImage = () => {
+    if (item.images && item.images.length > 1) {
+      setCurrentImageIndex((prev) => (prev === item.images.length - 1 ? 0 : prev + 1))
+    }
+  }
+
+  const prevImage = () => {
+    if (item.images && item.images.length > 1) {
+      setCurrentImageIndex((prev) => (prev === 0 ? item.images.length - 1 : prev - 1))
+    }
+  }
+
+  const handleApprove = () => {
+    onApprove(item.id)
+    onClose()
+  }
+
+  const handleReject = () => {
+    onReject(item.id)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="p-6 border-b">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">{item.title}</h2>
+              <p className="text-gray-600">
+                Review item details before approval - Submitted by {item.owner?.name} ({item.owner?.email})
+              </p>
+            </div>
+            <Button variant="outline" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Images Section */}
+            <div className="space-y-4">
+              <div className="aspect-square relative bg-gray-100 rounded-lg overflow-hidden">
+                {item.images && item.images.length > 0 ? (
+                  <Image
+                    src={`http://localhost:5001/uploads/items/${item.images[currentImageIndex]}`}
+                    alt={`${item.title} - Image ${currentImageIndex + 1}`}
+                    fill
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Package className="h-16 w-16 text-gray-400" />
+                    <span className="ml-2 text-gray-500">No images uploaded</span>
+                  </div>
+                )}
+
+                {item.images && item.images.length > 1 && (
+                  <>
+                    <button
+                      onClick={prevImage}
+                      className="absolute left-2 top-1/2 transform -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={nextImage}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 bg-black/50 text-white px-2 py-1 rounded text-sm">
+                      {currentImageIndex + 1} / {item.images.length}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Image Thumbnails */}
+              {item.images && item.images.length > 1 && (
+                <div className="flex space-x-2 overflow-x-auto">
+                  {item.images.map((image: string, index: number) => (
+                    <button
+                      key={index}
+                      onClick={() => setCurrentImageIndex(index)}
+                      className={`flex-shrink-0 w-16 h-16 rounded-md overflow-hidden border-2 transition-colors ${
+                        index === currentImageIndex ? "border-blue-500" : "border-gray-200"
+                      }`}
+                    >
+                      <Image
+                        src={`http://localhost:5001/uploads/items/${image}`}
+                        alt={`Thumbnail ${index + 1}`}
+                        width={64}
+                        height={64}
+                        className="object-cover w-full h-full"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Bill/Receipt Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center">
+                    <FileText className="h-5 w-5 mr-2" />
+                    Purchase Bill/Receipt
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {item.has_bill ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-green-600 font-medium">✓ Bill uploaded</span>
+                        <div className="space-x-2">
+                          <Button variant="outline" size="sm" onClick={() => setShowBill(!showBill)}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            {showBill ? "Hide" : "View"} Bill
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              window.open(`http://localhost:5001/uploads/bills/${item.bill_path}`, "_blank")
+                            }
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Download
+                          </Button>
+                        </div>
+                      </div>
+
+                      {showBill && item.bill_path && (
+                        <div className="border rounded-lg p-2 bg-gray-50">
+                          <img
+                            src={`http://localhost:5001/uploads/bills/${item.bill_path}`}
+                            alt="Purchase Bill"
+                            className="max-w-full h-auto rounded"
+                            style={{ maxHeight: "300px" }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-red-600 font-medium">⚠ No bill uploaded</div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Item Details Section */}
+            <div className="space-y-6">
+              {/* Basic Info */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Item Information</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Category</label>
+                      <p className="font-medium">{item.category}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Type</label>
+                      <p className="font-medium">{item.type}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Size</label>
+                      <p className="font-medium">{item.size}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Condition</label>
+                      <p className="font-medium">{item.condition}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Points Value</label>
+                      <p className="font-medium text-green-600">{item.points} points</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Status</label>
+                      <Badge variant="secondary">{item.status}</Badge>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Description</label>
+                    <p className="mt-1 text-gray-900 leading-relaxed">{item.description}</p>
+                  </div>
+
+                  {item.tags && item.tags.length > 0 && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Tags</label>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {item.tags.map((tag: string) => (
+                          <span key={tag} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Owner Info */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Owner Information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                        <span className="font-medium text-gray-600">{item.owner?.name?.charAt(0) || "U"}</span>
+                      </div>
+                      <div>
+                        <p className="font-medium">{item.owner?.name}</p>
+                        <p className="text-sm text-gray-600">{item.owner?.email}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-600">Points Balance:</span>
+                        <span className="ml-2 font-medium">{item.owner?.points || 0}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Member Since:</span>
+                        <span className="ml-2 font-medium">
+                          {new Date(item.owner?.created_at || "").toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Submission Info */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Submission Details</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Submitted:</span>
+                      <span className="font-medium">{new Date(item.created_at).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Images:</span>
+                      <span className="font-medium">{item.images?.length || 0} uploaded</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Bill:</span>
+                      <span className={`font-medium ${item.has_bill ? "text-green-600" : "text-red-600"}`}>
+                        {item.has_bill ? "Provided" : "Missing"}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Action Buttons */}
+              <div className="flex space-x-3">
+                <Button onClick={handleApprove} className="flex-1 bg-green-600 hover:bg-green-700" size="lg">
+                  <Check className="h-5 w-5 mr-2" />
+                  Approve Item
+                </Button>
+                <Button onClick={handleReject} variant="destructive" className="flex-1" size="lg">
+                  <X className="h-5 w-5 mr-2" />
+                  Reject Item
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth()
@@ -27,6 +337,8 @@ export default function AdminPage() {
     reports: 0,
   })
   const [loading, setLoading] = useState(true)
+  const [selectedItem, setSelectedItem] = useState(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== "admin")) {
@@ -64,6 +376,12 @@ export default function AdminPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleViewDetails = (item: any) => {
+    console.log("View details clicked for item:", item.id)
+    setSelectedItem(item)
+    setIsModalOpen(true)
   }
 
   const handleApprove = async (itemId: number) => {
@@ -113,6 +431,11 @@ export default function AdminPage() {
         variant: "destructive",
       })
     }
+  }
+
+  const closeModal = () => {
+    setIsModalOpen(false)
+    setSelectedItem(null)
   }
 
   if (authLoading || loading) {
@@ -236,7 +559,12 @@ export default function AdminPage() {
                               </div>
 
                               <div className="flex space-x-2">
-                                <Button size="sm" variant="outline">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleViewDetails(item)}
+                                  className="hover:bg-gray-50"
+                                >
                                   <Eye className="h-4 w-4 mr-2" />
                                   View Details
                                 </Button>
@@ -302,6 +630,15 @@ export default function AdminPage() {
           </Tabs>
         </div>
       </main>
+
+      {/* Item Detail Modal */}
+      <ItemDetailModal
+        item={selectedItem}
+        isOpen={isModalOpen}
+        onClose={closeModal}
+        onApprove={handleApprove}
+        onReject={handleReject}
+      />
     </div>
   )
 }
