@@ -109,6 +109,11 @@ export const itemsApi = {
       method: "POST",
       body: formData,
     }),
+
+  redeemItem: (id: number) =>
+    apiRequest(`/items/${id}/redeem`, {
+      method: "POST",
+    }),
 }
 
 // Categories API
@@ -131,6 +136,39 @@ export const adminApi = {
     apiRequest(`/admin/items/${id}/reject`, {
       method: "POST",
       body: JSON.stringify({ reason }),
+    }),
+}
+
+// Swap Requests API
+export const swapRequestsApi = {
+  createSwapRequest: (data: any) =>
+    apiRequest("/swap-requests", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  getUserSwapRequests: (type: "sent" | "received" | "all" = "all") => apiRequest(`/swap-requests/user?type=${type}`),
+
+  acceptSwapRequest: (id: number) =>
+    apiRequest(`/swap-requests/${id}/accept`, {
+      method: "POST",
+    }),
+
+  rejectSwapRequest: (id: number) =>
+    apiRequest(`/swap-requests/${id}/reject`, {
+      method: "POST",
+    }),
+}
+
+// Messages API
+export const messagesApi = {
+  sendMessage: (recipientId: number, content: string) =>
+    apiRequest("/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        recipient_id: recipientId,
+        content: content,
+      }),
     }),
 }
 

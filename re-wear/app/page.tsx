@@ -1,41 +1,49 @@
+"use client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, Recycle, Users, Award, Star } from "lucide-react"
+import { ArrowRight, Recycle, Users, Award, Star, ChevronLeft, ChevronRight } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
-
-const featuredItems = [
-  {
-    id: 1,
-    title: "Vintage Denim Jacket",
-    category: "Outerwear",
-    condition: "Excellent",
-    points: 25,
-    image: "/placeholder.svg?height=200&width=200",
-    user: "Sarah M.",
-  },
-  {
-    id: 2,
-    title: "Designer Silk Scarf",
-    category: "Accessories",
-    condition: "Like New",
-    points: 15,
-    image: "/placeholder.svg?height=200&width=200",
-    user: "Emma K.",
-  },
-  {
-    id: 3,
-    title: "Cotton Summer Dress",
-    category: "Dresses",
-    condition: "Good",
-    points: 20,
-    image: "/placeholder.svg?height=200&width=200",
-    user: "Lisa R.",
-  },
-]
+import { useEffect, useState } from "react"
+import { itemsApi } from "@/lib/api"
 
 export default function LandingPage() {
+  const [featuredItems, setFeaturedItems] = useState([])
+  const [currentSlide, setCurrentSlide] = useState(0)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchFeaturedItems()
+  }, [])
+
+  const fetchFeaturedItems = async () => {
+    try {
+      const response = await itemsApi.getItems({ per_page: 6, status: "approved" })
+      if (response.success) {
+        setFeaturedItems(response.items)
+      }
+    } catch (error) {
+      console.error("Failed to fetch featured items:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const nextSlide = () => {
+    setCurrentSlide((prev) => (prev + 1) % Math.ceil(featuredItems.length / 3))
+  }
+
+  const prevSlide = () => {
+    setCurrentSlide((prev) => (prev - 1 + Math.ceil(featuredItems.length / 3)) % Math.ceil(featuredItems.length / 3))
+  }
+
+  const getVisibleItems = () => {
+    const itemsPerSlide = 3
+    const startIndex = currentSlide * itemsPerSlide
+    return featuredItems.slice(startIndex, startIndex + itemsPerSlide)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50">
       {/* Header */}
@@ -124,7 +132,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Featured Items */}
+      {/* Featured Items Carousel */}
       <section className="py-16 px-4 bg-gray-50">
         <div className="container mx-auto">
           <div className="flex items-center justify-between mb-8">
@@ -133,31 +141,80 @@ export default function LandingPage() {
               <Button variant="outline">View All</Button>
             </Link>
           </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {featuredItems.map((item) => (
-              <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                <div className="aspect-square relative">
-                  <Image src={item.image || "/placeholder.svg"} alt={item.title} fill className="object-cover" />
-                </div>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-semibold text-lg">{item.title}</h3>
-                    <div className="flex items-center text-green-600">
-                      <Star className="h-4 w-4 mr-1" />
-                      <span className="font-semibold">{item.points}</span>
+
+          {loading ? (
+            <div className="grid md:grid-cols-3 gap-6">
+              {[1, 2, 3].map((i) => (
+                <Card key={i} className="overflow-hidden animate-pulse">
+                  <div className="aspect-square bg-gray-200"></div>
+                  <CardContent className="p-4">
+                    <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : featuredItems.length > 0 ? (
+            <div className="relative">
+              <div className="grid md:grid-cols-3 gap-6">
+                {getVisibleItems().map((item: any) => (
+                  <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                    <div className="aspect-square relative">
+                      {item.images && item.images.length > 0 ? (
+                        <Image
+                          src={`http://localhost:5001/uploads/items/${item.images[0]}`}
+                          alt={item.title}
+                          fill
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                          <span className="text-gray-400">No Image</span>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-2">
-                      <Badge variant="secondary">{item.category}</Badge>
-                      <Badge variant="outline">{item.condition}</Badge>
-                    </div>
-                    <span className="text-sm text-gray-500">by {item.user}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="font-semibold text-lg line-clamp-1">{item.title}</h3>
+                        <div className="flex items-center text-green-600">
+                          <Star className="h-4 w-4 mr-1" />
+                          <span className="font-semibold">{item.points}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex gap-2">
+                          <Badge variant="secondary">{item.category}</Badge>
+                          <Badge variant="outline">{item.condition}</Badge>
+                        </div>
+                        <span className="text-sm text-gray-500">by {item.owner?.name}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {featuredItems.length > 3 && (
+                <>
+                  <button
+                    onClick={prevSlide}
+                    className="absolute left-0 top-1/2 transform -translate-y-1/2 -translate-x-4 bg-white rounded-full p-2 shadow-lg hover:shadow-xl transition-shadow"
+                  >
+                    <ChevronLeft className="h-6 w-6" />
+                  </button>
+                  <button
+                    onClick={nextSlide}
+                    className="absolute right-0 top-1/2 transform -translate-y-1/2 translate-x-4 bg-white rounded-full p-2 shadow-lg hover:shadow-xl transition-shadow"
+                  >
+                    <ChevronRight className="h-6 w-6" />
+                  </button>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-500">No featured items available at the moment.</p>
+            </div>
+          )}
         </div>
       </section>
 

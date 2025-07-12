@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth-provider"
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { Star, Package, ArrowUpDown, Settings, Camera, Edit3, Award, TrendingUp } from "lucide-react"
+import { swapRequestsApi } from "@/lib/api"
 
 const userStats = {
   totalSwaps: 23,
@@ -45,6 +46,153 @@ const recentActivity = [
     points: "-25",
   },
 ]
+
+function SwapRequestsActivity() {
+  const [swapRequests, setSwapRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
+  const { user } = useAuth()
+
+  useEffect(() => {
+    fetchSwapRequests()
+  }, [])
+
+  const fetchSwapRequests = async () => {
+    try {
+      const response = await swapRequestsApi.getUserSwapRequests("all")
+      if (response.success) {
+        setSwapRequests(response.swap_requests.slice(0, 5)) // Show only recent 5
+      }
+    } catch (error) {
+      console.error("Failed to fetch swap requests:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAcceptRequest = async (requestId: number) => {
+    try {
+      const response = await swapRequestsApi.acceptSwapRequest(requestId)
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: response.message,
+        })
+        fetchSwapRequests() // Refresh the list
+      } else {
+        toast({
+          title: "Error",
+          description: response.message,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to accept swap request",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleRejectRequest = async (requestId: number) => {
+    try {
+      const response = await swapRequestsApi.rejectSwapRequest(requestId)
+      if (response.success) {
+        toast({
+          title: "Request Rejected",
+          description: response.message,
+        })
+        fetchSwapRequests() // Refresh the list
+      } else {
+        toast({
+          title: "Error",
+          description: response.message,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to reject swap request",
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (loading) {
+    return <div className="text-center py-4">Loading activity...</div>
+  }
+
+  if (swapRequests.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <ArrowUpDown className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+        <p className="text-gray-500">No recent activity</p>
+        <p className="text-gray-400 text-sm mt-1">Start swapping to see your activity here</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {swapRequests.map((request: any) => (
+        <div key={request.id} className="flex items-center justify-between p-3 border rounded-lg">
+          <div className="flex items-center space-x-3">
+            <div
+              className={`p-2 rounded-full ${
+                request.status === "pending"
+                  ? "bg-yellow-100 text-yellow-600"
+                  : request.status === "accepted"
+                    ? "bg-green-100 text-green-600"
+                    : request.status === "rejected"
+                      ? "bg-red-100 text-red-600"
+                      : "bg-blue-100 text-blue-600"
+              }`}
+            >
+              <ArrowUpDown className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="font-medium">
+                {request.requester_id === user?.id
+                  ? `Swap request sent for "${request.requested_item?.title}"`
+                  : `Swap request received for "${request.requested_item?.title}"`}
+              </p>
+              <p className="text-sm text-gray-500">
+                {new Date(request.created_at).toLocaleDateString()} • {request.points_offered} points
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Badge
+              variant={
+                request.status === "pending"
+                  ? "secondary"
+                  : request.status === "accepted"
+                    ? "default"
+                    : request.status === "rejected"
+                      ? "destructive"
+                      : "outline"
+              }
+            >
+              {request.status}
+            </Badge>
+            {request.status === "pending" && request.owner_id === user?.id && (
+              <div className="flex space-x-1">
+                <Button size="sm" onClick={() => handleAcceptRequest(request.id)}>
+                  Accept
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleRejectRequest(request.id)}>
+                  Reject
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function ProfilePage() {
   const { user, logout } = useAuth()
@@ -241,38 +389,7 @@ export default function ProfilePage() {
                       <CardDescription>Your latest swaps, listings, and point transactions</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        {recentActivity.map((activity) => (
-                          <div key={activity.id} className="flex items-center justify-between p-3 border rounded-lg">
-                            <div className="flex items-center space-x-3">
-                              <div
-                                className={`p-2 rounded-full ${
-                                  activity.type === "swap"
-                                    ? "bg-blue-100 text-blue-600"
-                                    : activity.type === "listing"
-                                      ? "bg-green-100 text-green-600"
-                                      : "bg-orange-100 text-orange-600"
-                                }`}
-                              >
-                                {activity.type === "swap" ? (
-                                  <ArrowUpDown className="h-4 w-4" />
-                                ) : activity.type === "listing" ? (
-                                  <Package className="h-4 w-4" />
-                                ) : (
-                                  <Star className="h-4 w-4" />
-                                )}
-                              </div>
-                              <div>
-                                <p className="font-medium">{activity.description}</p>
-                                <p className="text-sm text-gray-500">{activity.date}</p>
-                              </div>
-                            </div>
-                            <Badge variant={activity.points.startsWith("+") ? "default" : "secondary"}>
-                              {activity.points} pts
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
+                      <SwapRequestsActivity />
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -333,3 +450,6 @@ export default function ProfilePage() {
     </div>
   )
 }
+import Image from "next/image"
+import Link from "next/link"
+import { Plus } from "lucide-react"
