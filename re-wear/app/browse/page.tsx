@@ -101,7 +101,7 @@ export default function BrowsePage() {
       <div className="aspect-square relative">
         {item.primary_image ? (
           <Image
-            src={`http://localhost:5000/uploads/items/${item.primary_image}`}
+            src={`http://localhost:5001/uploads/items/${item.primary_image}`}
             alt={item.title}
             fill
             className="object-cover group-hover:scale-105 transition-transform duration-300"

@@ -20,7 +20,7 @@ const userStats = {
   itemsListed: 15,
   pointsEarned: 450,
   rating: 4.8,
-  joinDate: "March 2023",
+  joinDate: "March 2025",
 }
 
 const recentActivity = [
@@ -305,46 +305,7 @@ export default function ProfilePage() {
               </Card>
 
               {/* Quick Stats */}
-              <Card className="mt-6">
-                <CardHeader>
-                  <CardTitle className="text-lg">Quick Stats</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <ArrowUpDown className="h-4 w-4 text-blue-600 mr-2" />
-                      <span className="text-sm">Total Swaps</span>
-                    </div>
-                    <span className="font-semibold">{userStats.totalSwaps}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Package className="h-4 w-4 text-purple-600 mr-2" />
-                      <span className="text-sm">Items Listed</span>
-                    </div>
-                    <span className="font-semibold">{userStats.itemsListed}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Award className="h-4 w-4 text-orange-600 mr-2" />
-                      <span className="text-sm">Points Earned</span>
-                    </div>
-                    <span className="font-semibold">{userStats.pointsEarned}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <TrendingUp className="h-4 w-4 text-green-600 mr-2" />
-                      <span className="text-sm">Success Rate</span>
-                    </div>
-                    <span className="font-semibold">
-                      {Math.round((userStats.successfulSwaps / userStats.totalSwaps) * 100)}%
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+              
             </div>
 
             {/* Main Content */}
