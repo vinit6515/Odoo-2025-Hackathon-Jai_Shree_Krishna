@@ -139,19 +139,6 @@ class Item(db.Model):
     # Relationships
     images = db.relationship('ItemImage', backref='item', lazy=True, cascade='all, delete-orphan')
     tags = db.relationship('ItemTag', backref='item', lazy=True, cascade='all, delete-orphan')
-    swap_requests = db.relationship(
-    'SwapRequest',
-    backref='target_item',
-    lazy=True,
-    foreign_keys='SwapRequest.item_id'
-    )
-
-    offered_swap_requests = db.relationship(
-        'SwapRequest',
-        backref='offered_item',
-        lazy=True,
-        foreign_keys='SwapRequest.offered_item_id'
-    )
 
     def to_dict(self):
         return {
@@ -189,12 +176,33 @@ class SwapRequest(db.Model):
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
     requester_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    offered_item_id = db.Column(db.Integer, db.ForeignKey('item.id'))
-    points_offered = db.Column(db.Integer)
+    offered_item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=True)
+    points_offered = db.Column(db.Integer, default=0)
     message = db.Column(db.Text)
     status = db.Column(db.String(20), default='pending')  # pending, accepted, rejected, completed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships with different foreign keys
+    requested_item = db.relationship('Item', foreign_keys=[item_id], backref='swap_requests_for_item')
+    offered_item = db.relationship('Item', foreign_keys=[offered_item_id], backref='swap_requests_offering_item')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'item_id': self.item_id,
+            'requester_id': self.requester_id,
+            'owner_id': self.owner_id,
+            'offered_item_id': self.offered_item_id,
+            'points_offered': self.points_offered,
+            'message': self.message,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'requester': self.requester.to_dict() if self.requester else None,
+            'requested_item': self.requested_item.to_dict() if self.requested_item else None,
+            'offered_item': self.offered_item.to_dict() if self.offered_item else None
+        }
 
 class Report(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -834,6 +842,7 @@ def get_pending_items():
             item_data = item.to_dict()
             item_data['primary_image'] = primary_image.image_path if primary_image else None
             item_data['has_bill'] = bool(item.bill_path)
+            item_data['bill_path'] = item.bill_path  # Add bill path for viewing
             pending_items.append(item_data)
         
         return jsonify({
@@ -961,6 +970,10 @@ def uploaded_file(filename):
 # Initialize database
 def create_tables():
     with app.app_context():
+        # Drop all tables first to avoid foreign key issues
+        db.drop_all()
+        
+        # Create all tables
         db.create_all()
         
         # Create default categories
@@ -970,24 +983,429 @@ def create_tables():
         ]
         
         for cat_name in default_categories:
-            if not Category.query.filter_by(name=cat_name).first():
-                category = Category(name=cat_name)
-                db.session.add(category)
+            category = Category(name=cat_name)
+            db.session.add(category)
         
         # Create admin user if not exists
         admin_email = 'admin@rewear.com'
-        if not User.query.filter_by(email=admin_email).first():
-            admin = User(
-                email=admin_email,
-                name='Admin',
-                password_hash=generate_password_hash('admin123'),
-                role='admin',
-                points=1000
-            )
-            db.session.add(admin)
+        admin = User(
+            email=admin_email,
+            name='Admin',
+            password_hash=generate_password_hash('admin123'),
+            role='admin',
+            points=1000
+        )
+        db.session.add(admin)
+        
+        # Create a test user
+        test_user = User(
+            email='test@rewear.com',
+            name='Test User',
+            password_hash=generate_password_hash('test123'),
+            role='user',
+            points=100
+        )
+        db.session.add(test_user)
         
         db.session.commit()
+        
+        # Create some sample items for the carousel
+        sample_items = [
+            {
+                'title': 'Vintage Denim Jacket',
+                'description': 'Classic vintage denim jacket in excellent condition.',
+                'category': 'Outerwear',
+                'type': 'Casual',
+                'size': 'M',
+                'condition': 'Excellent',
+                'user_id': test_user.id
+            },
+            {
+                'title': 'Designer Silk Scarf',
+                'description': 'Beautiful silk scarf from a luxury brand.',
+                'category': 'Accessories',
+                'type': 'Formal',
+                'size': 'One Size',
+                'condition': 'Like New',
+                'user_id': test_user.id
+            },
+            {
+                'title': 'Cotton Summer Dress',
+                'description': 'Light and comfortable summer dress.',
+                'category': 'Dresses',
+                'type': 'Casual',
+                'size': 'S',
+                'condition': 'Good',
+                'user_id': test_user.id
+            }
+        ]
+        
+        for item_data in sample_items:
+            category = Category.query.filter_by(name=item_data['category']).first()
+            if category:
+                points = calculate_item_points(item_data['condition'], item_data['category'])
+                item = Item(
+                    title=item_data['title'],
+                    description=item_data['description'],
+                    category_id=category.id,
+                    type=item_data['type'],
+                    size=item_data['size'],
+                    condition=item_data['condition'],
+                    points=points,
+                    user_id=item_data['user_id'],
+                    status='approved'  # Pre-approve sample items
+                )
+                db.session.add(item)
+        
+        db.session.commit()
+        print("Database initialized with sample data!")
 
 if __name__ == '__main__':
     create_tables()
     app.run(debug=True, host='0.0.0.0', port=5000)
+
+# Swap Request Routes
+@app.route('/api/swap-requests', methods=['POST'])
+@login_required
+def create_swap_request():
+    try:
+        data = request.get_json()
+        user_id = session['user_id']
+        
+        item_id = data.get('item_id')
+        message = data.get('message', '')
+        request_type = data.get('type', 'points')  # 'points' or 'item'
+        offered_item_id = data.get('offered_item_id')
+        points_offered = data.get('points_offered', 0)
+        
+        if not item_id:
+            return jsonify({
+                'success': False,
+                'message': 'Item ID is required.'
+            }), 400
+        
+        # Get the item
+        item = Item.query.get(item_id)
+        if not item:
+            return jsonify({
+                'success': False,
+                'message': 'Item not found.'
+            }), 404
+        
+        if item.user_id == user_id:
+            return jsonify({
+                'success': False,
+                'message': 'You cannot request to swap your own item.'
+            }), 400
+        
+        if item.status != 'approved':
+            return jsonify({
+                'success': False,
+                'message': 'This item is not available for swap.'
+            }), 400
+        
+        # Check if user has enough points for points-based swap
+        user = User.query.get(user_id)
+        if request_type == 'points' and user.points < item.points:
+            return jsonify({
+                'success': False,
+                'message': f'Insufficient points. You need {item.points} points but have {user.points}.'
+            }), 400
+        
+        # Check for existing pending request
+        existing_request = SwapRequest.query.filter_by(
+            item_id=item_id,
+            requester_id=user_id,
+            status='pending'
+        ).first()
+        
+        if existing_request:
+            return jsonify({
+                'success': False,
+                'message': 'You already have a pending request for this item.'
+            }), 400
+        
+        # Create swap request
+        swap_request = SwapRequest(
+            item_id=item_id,
+            requester_id=user_id,
+            owner_id=item.user_id,
+            offered_item_id=offered_item_id if request_type == 'item' else None,
+            points_offered=points_offered if request_type == 'points' else 0,
+            message=message
+        )
+        
+        db.session.add(swap_request)
+        db.session.commit()
+        
+        logger.info(f"Swap request created: {swap_request.id} by user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Swap request sent successfully!',
+            'swap_request': swap_request.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Create swap request error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to create swap request.'
+        }), 500
+
+@app.route('/api/swap-requests/user', methods=['GET'])
+@login_required
+def get_user_swap_requests():
+    try:
+        user_id = session['user_id']
+        request_type = request.args.get('type', 'all')  # 'sent', 'received', 'all'
+        
+        query = SwapRequest.query
+        
+        if request_type == 'sent':
+            query = query.filter_by(requester_id=user_id)
+        elif request_type == 'received':
+            query = query.filter_by(owner_id=user_id)
+        else:
+            query = query.filter(
+                db.or_(
+                    SwapRequest.requester_id == user_id,
+                    SwapRequest.owner_id == user_id
+                )
+            )
+        
+        swap_requests = query.order_by(SwapRequest.created_at.desc()).all()
+        
+        return jsonify({
+            'success': True,
+            'swap_requests': [req.to_dict() for req in swap_requests]
+        })
+        
+    except Exception as e:
+        logger.error(f"Get user swap requests error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to fetch swap requests.'
+        }), 500
+
+@app.route('/api/swap-requests/<int:request_id>/accept', methods=['POST'])
+@login_required
+def accept_swap_request(request_id):
+    try:
+        user_id = session['user_id']
+        
+        swap_request = SwapRequest.query.get(request_id)
+        if not swap_request:
+            return jsonify({
+                'success': False,
+                'message': 'Swap request not found.'
+            }), 404
+        
+        if swap_request.owner_id != user_id:
+            return jsonify({
+                'success': False,
+                'message': 'You can only accept requests for your own items.'
+            }), 403
+        
+        if swap_request.status != 'pending':
+            return jsonify({
+                'success': False,
+                'message': 'This request has already been processed.'
+            }), 400
+        
+        # Process the swap
+        item = swap_request.requested_item
+        requester = swap_request.requester
+        owner = User.query.get(swap_request.owner_id)
+        
+        if swap_request.points_offered > 0:
+            # Points-based swap
+            if requester.points < swap_request.points_offered:
+                return jsonify({
+                    'success': False,
+                    'message': 'Requester has insufficient points.'
+                }), 400
+            
+            # Transfer points
+            requester.points -= swap_request.points_offered
+            owner.points += swap_request.points_offered
+        
+        # Update swap request status
+        swap_request.status = 'accepted'
+        swap_request.updated_at = datetime.utcnow()
+        
+        # Mark item as swapped
+        item.status = 'swapped'
+        
+        db.session.commit()
+        
+        logger.info(f"Swap request accepted: {request_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Swap request accepted successfully!'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Accept swap request error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to accept swap request.'
+        }), 500
+
+@app.route('/api/swap-requests/<int:request_id>/reject', methods=['POST'])
+@login_required
+def reject_swap_request(request_id):
+    try:
+        user_id = session['user_id']
+        
+        swap_request = SwapRequest.query.get(request_id)
+        if not swap_request:
+            return jsonify({
+                'success': False,
+                'message': 'Swap request not found.'
+            }), 404
+        
+        if swap_request.owner_id != user_id:
+            return jsonify({
+                'success': False,
+                'message': 'You can only reject requests for your own items.'
+            }), 403
+        
+        if swap_request.status != 'pending':
+            return jsonify({
+                'success': False,
+                'message': 'This request has already been processed.'
+            }), 400
+        
+        swap_request.status = 'rejected'
+        swap_request.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        logger.info(f"Swap request rejected: {request_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Swap request rejected.'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Reject swap request error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to reject swap request.'
+        }), 500
+
+# Points redemption route
+@app.route('/api/items/<int:item_id>/redeem', methods=['POST'])
+@login_required
+def redeem_item_with_points(item_id):
+    try:
+        user_id = session['user_id']
+        user = User.query.get(user_id)
+        
+        item = Item.query.get(item_id)
+        if not item:
+            return jsonify({
+                'success': False,
+                'message': 'Item not found.'
+            }), 404
+        
+        if item.user_id == user_id:
+            return jsonify({
+                'success': False,
+                'message': 'You cannot redeem your own item.'
+            }), 400
+        
+        if item.status != 'approved':
+            return jsonify({
+                'success': False,
+                'message': 'This item is not available for redemption.'
+            }), 400
+        
+        if user.points < item.points:
+            return jsonify({
+                'success': False,
+                'message': f'Insufficient points. You need {item.points} points but have {user.points}.'
+            }), 400
+        
+        # Process redemption
+        user.points -= item.points
+        item.owner.points += item.points
+        item.status = 'swapped'
+        
+        # Create a swap request record for tracking
+        swap_request = SwapRequest(
+            item_id=item_id,
+            requester_id=user_id,
+            owner_id=item.user_id,
+            points_offered=item.points,
+            message='Direct redemption with points',
+            status='completed'
+        )
+        
+        db.session.add(swap_request)
+        db.session.commit()
+        
+        logger.info(f"Item redeemed: {item_id} by user {user_id} for {item.points} points")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Item redeemed successfully for {item.points} points!',
+            'remaining_points': user.points
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Redeem item error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to redeem item.'
+        }), 500
+
+# Messages/Chat routes
+@app.route('/api/messages', methods=['POST'])
+@login_required
+def send_message():
+    try:
+        data = request.get_json()
+        sender_id = session['user_id']
+        recipient_id = data.get('recipient_id')
+        content = data.get('content', '').strip()
+        
+        if not recipient_id or not content:
+            return jsonify({
+                'success': False,
+                'message': 'Recipient and message content are required.'
+            }), 400
+        
+        if sender_id == recipient_id:
+            return jsonify({
+                'success': False,
+                'message': 'You cannot send a message to yourself.'
+            }), 400
+        
+        # Check if recipient exists
+        recipient = User.query.get(recipient_id)
+        if not recipient:
+            return jsonify({
+                'success': False,
+                'message': 'Recipient not found.'
+            }), 404
+        
+        # For now, just return success (implement actual messaging later)
+        return jsonify({
+            'success': True,
+            'message': f'Message sent to {recipient.name}!'
+        })
+        
+    except Exception as e:
+        logger.error(f"Send message error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to send message.'
+        }), 500
