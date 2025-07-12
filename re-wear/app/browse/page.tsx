@@ -101,7 +101,7 @@ export default function BrowsePage() {
       <div className="aspect-square relative">
         {item.primary_image ? (
           <Image
-            src={http://localhost:5001/uploads/items/${item.primary_image}}
+            src={`http://localhost:5000/uploads/items/${item.primary_image}`}
             alt={item.title}
             fill
             className="object-cover group-hover:scale-105 transition-transform duration-300"
@@ -115,7 +115,7 @@ export default function BrowsePage() {
           onClick={() => toggleLike(item.id, type)}
           className="absolute top-3 right-3 p-2 bg-white/80 rounded-full hover:bg-white transition-colors"
         >
-          <Heart className={h-4 w-4 ${item.liked ? "fill-red-500 text-red-500" : "text-gray-600"}} />
+          <Heart className={`h-4 w-4 ${item.liked ? "fill-red-500 text-red-500" : "text-gray-600"}`} />
         </button>
         <div className="absolute top-3 left-3 flex items-center">
           {type === "donation" ? (
@@ -161,7 +161,7 @@ export default function BrowsePage() {
           {item.tags?.length > 2 && <span className="text-xs text-gray-500">+{item.tags.length - 2}</span>}
         </div>
 
-        <Link href={/item/${item.id}}>
+        <Link href={`/item/${item.id}`}>
           <Button className="w-full" size="sm">
             {type === "donation" ? "Claim Item" : "View Details"}
           </Button>

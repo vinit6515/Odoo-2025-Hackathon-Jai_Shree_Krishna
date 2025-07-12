@@ -272,7 +272,7 @@ export default function AddItemPage() {
                         <div key={index} className="relative">
                           <img
                             src={URL.createObjectURL(image) || "/placeholder.svg"}
-                            alt={Preview ${index + 1}}
+                            alt={`Preview ${index + 1}`}
                             className="w-full h-24 object-cover rounded-lg"
                           />
                           <button
@@ -470,7 +470,7 @@ export default function AddItemPage() {
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading
                     ? "Submitting..."
-                    : Submit Item for ${formData.listingType === "donation" ? "Donation" : "Approval"}}
+                    : `Submit Item for ${formData.listingType === "donation" ? "Donation" : "Approval"}`}
                 </Button>
               </form>
             </CardContent>

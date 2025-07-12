@@ -155,8 +155,8 @@ function SwapRequestsActivity() {
             <div>
               <p className="font-medium">
                 {request.requester_id === user?.id
-                  ? Swap request sent for "${request.requested_item?.title}"
-                  : Swap request received for "${request.requested_item?.title}"}
+                  ? `Swap request sent for "${request.requested_item?.title}"`
+                  : `Swap request received for "${request.requested_item?.title}"`}
               </p>
               <p className="text-sm text-gray-500">
                 {new Date(request.created_at).toLocaleDateString()} • {request.points_offered} points
