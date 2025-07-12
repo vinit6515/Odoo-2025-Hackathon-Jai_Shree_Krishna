@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { X, Plus, FileText, ImageIcon } from "lucide-react"
+import { X, Plus, FileText, ImageIcon, Heart, ArrowUpDown } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { itemsApi } from "@/lib/api"
 
@@ -22,6 +22,23 @@ const categories = ["Tops", "Bottoms", "Dresses", "Outerwear", "Shoes", "Accesso
 const conditions = ["Like New", "Excellent", "Good", "Fair"]
 
 const sizes = ["XS", "S", "M", "L", "XL", "XXL", "6", "8", "10", "12", "14", "16"]
+
+const listingTypes = [
+  {
+    id: "swap",
+    title: "Swap",
+    description: "Exchange with other items or points",
+    icon: ArrowUpDown,
+    color: "blue",
+  },
+  {
+    id: "donation",
+    title: "Donation",
+    description: "Give away for free to help others",
+    icon: Heart,
+    color: "green",
+  },
+]
 
 export default function AddItemPage() {
   const { user } = useAuth()
@@ -36,6 +53,7 @@ export default function AddItemPage() {
     size: "",
     condition: "",
     tags: [] as string[],
+    listingType: "swap", // "swap" or "donation"
   })
 
   const [images, setImages] = useState<File[]>([])
@@ -96,10 +114,11 @@ export default function AddItemPage() {
       return
     }
 
-    if (!bill) {
+    // For donations, bill is optional
+    if (formData.listingType === "swap" && !bill) {
       toast({
-        title: "Bill required",
-        description: "Please upload the purchase bill for verification.",
+        title: "Bill required for swaps",
+        description: "Please upload the purchase bill for verification when listing for swap.",
         variant: "destructive",
       })
       return
@@ -117,6 +136,7 @@ export default function AddItemPage() {
       formDataToSend.append("type", formData.type)
       formDataToSend.append("size", formData.size)
       formDataToSend.append("condition", formData.condition)
+      formDataToSend.append("listing_type", formData.listingType)
 
       // Add tags
       formData.tags.forEach((tag) => {
@@ -128,7 +148,7 @@ export default function AddItemPage() {
         formDataToSend.append("images", image)
       })
 
-      // Add bill
+      // Add bill (if provided)
       if (bill) {
         formDataToSend.append("bill", bill)
       }
@@ -168,18 +188,62 @@ export default function AddItemPage() {
         <div className="container mx-auto max-w-2xl">
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Add New Item</h1>
-            <p className="text-gray-600">List your unused clothing for exchange with the community</p>
+            <p className="text-gray-600">List your unused clothing for exchange or donation</p>
           </div>
 
           <Card>
             <CardHeader>
               <CardTitle>Item Details</CardTitle>
-              <CardDescription>
-                Provide detailed information about your item to attract potential swappers
-              </CardDescription>
+              <CardDescription>Provide detailed information about your item</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Listing Type Selection */}
+                <div className="space-y-3">
+                  <Label>Listing Type</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {listingTypes.map((type) => {
+                      const Icon = type.icon
+                      return (
+                        <button
+                          key={type.id}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, listingType: type.id })}
+                          className={`p-4 border-2 rounded-lg text-left transition-all ${
+                            formData.listingType === type.id
+                              ? type.color === "blue"
+                                ? "border-blue-500 bg-blue-50"
+                                : "border-green-500 bg-green-50"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div
+                              className={`p-2 rounded-full ${
+                                type.color === "blue" ? "bg-blue-100 text-blue-600" : "bg-green-100 text-green-600"
+                              }`}
+                            >
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold">{type.title}</h3>
+                              <p className="text-sm text-gray-600">{type.description}</p>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {formData.listingType === "donation" && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <p className="text-sm text-green-800">
+                        <Heart className="h-4 w-4 inline mr-1" />
+                        Thank you for donating! Your item will be available for free to help others in need.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 {/* Images Upload */}
                 <div className="space-y-2">
                   <Label>Item Images (Max 5)</Label>
@@ -208,7 +272,7 @@ export default function AddItemPage() {
                         <div key={index} className="relative">
                           <img
                             src={URL.createObjectURL(image) || "/placeholder.svg"}
-                            alt={`Preview ${index + 1}`}
+                            alt={Preview ${index + 1}}
                             className="w-full h-24 object-cover rounded-lg"
                           />
                           <button
@@ -337,39 +401,76 @@ export default function AddItemPage() {
                   )}
                 </div>
 
-                {/* Bill Upload */}
-                <div className="space-y-2">
-                  <Label>Purchase Bill/Receipt (Required for verification)</Label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-                    <div className="text-center">
-                      <FileText className="mx-auto h-8 w-8 text-gray-400" />
-                      <div className="mt-2">
-                        <label htmlFor="bill" className="cursor-pointer">
-                          <span className="text-sm font-medium text-gray-900">Upload bill (PDF or Image)</span>
-                          <input
-                            id="bill"
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={handleBillUpload}
-                            className="hidden"
-                          />
-                        </label>
+                {/* Bill Upload - Only for swaps */}
+                {formData.listingType === "swap" && (
+                  <div className="space-y-2">
+                    <Label>Purchase Bill/Receipt (Required for swaps)</Label>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                      <div className="text-center">
+                        <FileText className="mx-auto h-8 w-8 text-gray-400" />
+                        <div className="mt-2">
+                          <label htmlFor="bill" className="cursor-pointer">
+                            <span className="text-sm font-medium text-gray-900">Upload bill (PDF or Image)</span>
+                            <input
+                              id="bill"
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={handleBillUpload}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
                       </div>
                     </div>
+                    {bill && (
+                      <div className="flex items-center space-x-2 mt-2">
+                        <FileText className="h-4 w-4 text-green-600" />
+                        <span className="text-sm text-green-600">{bill.name}</span>
+                        <button type="button" onClick={() => setBill(null)} className="text-red-500 hover:text-red-700">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  {bill && (
-                    <div className="flex items-center space-x-2 mt-2">
-                      <FileText className="h-4 w-4 text-green-600" />
-                      <span className="text-sm text-green-600">{bill.name}</span>
-                      <button type="button" onClick={() => setBill(null)} className="text-red-500 hover:text-red-700">
-                        <X className="h-4 w-4" />
-                      </button>
+                )}
+
+                {/* Optional Bill Upload for donations */}
+                {formData.listingType === "donation" && (
+                  <div className="space-y-2">
+                    <Label>Purchase Bill/Receipt (Optional for donations)</Label>
+                    <div className="border-2 border-dashed border-gray-200 rounded-lg p-4">
+                      <div className="text-center">
+                        <FileText className="mx-auto h-8 w-8 text-gray-400" />
+                        <div className="mt-2">
+                          <label htmlFor="bill" className="cursor-pointer">
+                            <span className="text-sm font-medium text-gray-700">Upload bill (PDF or Image)</span>
+                            <input
+                              id="bill"
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={handleBillUpload}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </div>
+                    {bill && (
+                      <div className="flex items-center space-x-2 mt-2">
+                        <FileText className="h-4 w-4 text-green-600" />
+                        <span className="text-sm text-green-600">{bill.name}</span>
+                        <button type="button" onClick={() => setBill(null)} className="text-red-500 hover:text-red-700">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? "Submitting..." : "Submit Item for Approval"}
+                  {loading
+                    ? "Submitting..."
+                    : Submit Item for ${formData.listingType === "donation" ? "Donation" : "Approval"}}
                 </Button>
               </form>
             </CardContent>

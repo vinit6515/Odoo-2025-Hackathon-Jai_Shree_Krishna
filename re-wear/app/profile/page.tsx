@@ -11,8 +11,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
-import { Star, Package, ArrowUpDown, Settings, Camera, Edit3, Award, TrendingUp } from "lucide-react"
-import { swapRequestsApi } from "@/lib/api"
+import { Star, Package, ArrowUpDown, Settings, Camera, Edit3, Award, TrendingUp, MapPin, Phone } from "lucide-react"
+import { swapRequestsApi, userApi } from "@/lib/api"
 
 const userStats = {
   totalSwaps: 23,
@@ -155,8 +155,8 @@ function SwapRequestsActivity() {
             <div>
               <p className="font-medium">
                 {request.requester_id === user?.id
-                  ? `Swap request sent for "${request.requested_item?.title}"`
-                  : `Swap request received for "${request.requested_item?.title}"`}
+                  ? Swap request sent for "${request.requested_item?.title}"
+                  : Swap request received for "${request.requested_item?.title}"}
               </p>
               <p className="text-sm text-gray-500">
                 {new Date(request.created_at).toLocaleDateString()} • {request.points_offered} points
@@ -195,22 +195,45 @@ function SwapRequestsActivity() {
 }
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth()
+  const { user, logout, updateUser } = useAuth()
   const { toast } = useToast()
   const [isEditing, setIsEditing] = useState(false)
   const [profileData, setProfileData] = useState({
     name: user?.name || "",
     email: user?.email || "",
-    bio: "Fashion enthusiast who loves sustainable clothing and unique vintage pieces.",
-    location: "New York, NY",
+    bio: user?.bio || "Fashion enthusiast who loves sustainable clothing and unique vintage pieces.",
+    location: user?.location || "",
+    phone: "",
+    address: "",
   })
 
-  const handleSaveProfile = () => {
-    setIsEditing(false)
-    toast({
-      title: "Profile updated",
-      description: "Your profile has been successfully updated.",
-    })
+  const handleSaveProfile = async () => {
+    try {
+      const response = await userApi.updateProfile({
+        name: profileData.name,
+        bio: profileData.bio,
+        location: profileData.location,
+        phone: profileData.phone,
+        address: profileData.address,
+      })
+
+      if (response.success) {
+        updateUser(response.user)
+        setIsEditing(false)
+        toast({
+          title: "Profile updated",
+          description: "Your profile has been successfully updated.",
+        })
+      } else {
+        throw new Error(response.message)
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update profile. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   if (!user) {
@@ -259,6 +282,24 @@ export default function ProfilePage() {
                     </div>
 
                     <p className="text-sm text-gray-500 mt-2">Member since {userStats.joinDate}</p>
+
+                    {/* Contact Information */}
+                    {(user.location || profileData.phone) && (
+                      <div className="mt-4 pt-4 border-t space-y-2">
+                        {user.location && (
+                          <div className="flex items-center justify-center text-sm text-gray-600">
+                            <MapPin className="h-4 w-4 mr-1" />
+                            <span>{user.location}</span>
+                          </div>
+                        )}
+                        {profileData.phone && (
+                          <div className="flex items-center justify-center text-sm text-gray-600">
+                            <Phone className="h-4 w-4 mr-1" />
+                            <span>{profileData.phone}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -320,7 +361,7 @@ export default function ProfilePage() {
                     <CardHeader className="flex flex-row items-center justify-between">
                       <div>
                         <CardTitle>Profile Information</CardTitle>
-                        <CardDescription>Update your personal information and preferences</CardDescription>
+                        <CardDescription>Update your personal information and contact details</CardDescription>
                       </div>
                       <Button variant="outline" size="sm" onClick={() => setIsEditing(!isEditing)}>
                         <Edit3 className="h-4 w-4 mr-2" />
@@ -346,17 +387,48 @@ export default function ProfilePage() {
                             type="email"
                             value={profileData.email}
                             onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                            disabled={true} // Email should not be editable
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="location">
+                            <MapPin className="h-4 w-4 inline mr-1" />
+                            Location/City
+                          </Label>
+                          <Input
+                            id="location"
+                            placeholder="e.g., New York, NY"
+                            value={profileData.location}
+                            onChange={(e) => setProfileData({ ...profileData, location: e.target.value })}
+                            disabled={!isEditing}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="phone">
+                            <Phone className="h-4 w-4 inline mr-1" />
+                            Phone Number
+                          </Label>
+                          <Input
+                            id="phone"
+                            placeholder="e.g., +1 (555) 123-4567"
+                            value={profileData.phone}
+                            onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
                             disabled={!isEditing}
                           />
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="location">Location</Label>
+                        <Label htmlFor="address">Full Address (for item pickup/delivery)</Label>
                         <Input
-                          id="location"
-                          value={profileData.location}
-                          onChange={(e) => setProfileData({ ...profileData, location: e.target.value })}
+                          id="address"
+                          placeholder="Street address, apartment, city, state, zip code"
+                          value={profileData.address}
+                          onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
                           disabled={!isEditing}
                         />
                       </div>
@@ -370,8 +442,19 @@ export default function ProfilePage() {
                           value={profileData.bio}
                           onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
                           disabled={!isEditing}
+                          placeholder="Tell others about your style preferences and interests..."
                         />
                       </div>
+
+                      {isEditing && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <h4 className="font-medium text-blue-900 mb-2">Privacy & Safety</h4>
+                          <p className="text-sm text-blue-800">
+                            Your contact information will only be shared with users you're actively swapping with. We
+                            recommend meeting in public places for item exchanges.
+                          </p>
+                        </div>
+                      )}
 
                       {isEditing && (
                         <Button onClick={handleSaveProfile} className="w-full">
@@ -430,6 +513,10 @@ export default function ProfilePage() {
                             <input type="checkbox" defaultChecked className="rounded" />
                             <span>Allow direct messages from other users</span>
                           </label>
+                          <label className="flex items-center space-x-2">
+                            <input type="checkbox" defaultChecked className="rounded" />
+                            <span>Share location with swap partners</span>
+                          </label>
                         </div>
                       </div>
 
@@ -450,6 +537,3 @@ export default function ProfilePage() {
     </div>
   )
 }
-import Image from "next/image"
-import Link from "next/link"
-import { Plus } from "lucide-react"

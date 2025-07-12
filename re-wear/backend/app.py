@@ -12,9 +12,9 @@ from functools import wraps
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(_name_)
 
-app = Flask(__name__)
+app = Flask(_name_)
 
 # Configuration
 app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
@@ -83,6 +83,8 @@ class User(db.Model):
     avatar = db.Column(db.String(255))
     bio = db.Column(db.Text)
     location = db.Column(db.String(100))
+    phone = db.Column(db.String(20))
+    address = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
     
@@ -101,6 +103,8 @@ class User(db.Model):
             'avatar': self.avatar,
             'bio': self.bio,
             'location': self.location,
+            'phone': self.phone,
+            'address': self.address,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -128,7 +132,8 @@ class Item(db.Model):
     size = db.Column(db.String(20), nullable=False)
     condition = db.Column(db.String(50), nullable=False)
     points = db.Column(db.Integer, nullable=False)
-    status = db.Column(db.String(20), default='pending')  # pending, approved, rejected, swapped
+    status = db.Column(db.String(20), default='pending')  # pending, approved, rejected, swapped, claimed
+    listing_type = db.Column(db.String(20), default='swap')  # swap, donation
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     bill_path = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -151,6 +156,7 @@ class Item(db.Model):
             'condition': self.condition,
             'points': self.points,
             'status': self.status,
+            'listing_type': self.listing_type,
             'views': self.views,
             'likes': self.likes,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -302,8 +308,12 @@ def save_file(file, folder, max_size=(800, 800)):
         logger.error(f"File save error: {str(e)}")
         raise
 
-def calculate_item_points(condition, category):
+def calculate_item_points(condition, category, listing_type):
     """Calculate points for an item based on condition and category"""
+    # Donations are always 0 points
+    if listing_type == 'donation':
+        return 0
+    
     base_points = {
         'Tops': 10,
         'Bottoms': 15,
@@ -542,6 +552,10 @@ def update_profile():
             user.bio = data['bio'].strip()
         if 'location' in data:
             user.location = data['location'].strip()
+        if 'phone' in data:
+            user.phone = data['phone'].strip()
+        if 'address' in data:
+            user.address = data['address'].strip()
         
         db.session.commit()
         
@@ -589,6 +603,7 @@ def create_item():
         item_type = request.form.get('type', '').strip()
         size = request.form.get('size', '').strip()
         condition = request.form.get('condition', '').strip()
+        listing_type = request.form.get('listing_type', 'swap').strip()
         tags = request.form.getlist('tags[]')
         
         # Validation
@@ -606,7 +621,7 @@ def create_item():
             db.session.flush()
         
         # Calculate points
-        points = calculate_item_points(condition, category_name)
+        points = calculate_item_points(condition, category_name, listing_type)
         
         # Create item
         item = Item(
@@ -617,8 +632,9 @@ def create_item():
             size=size,
             condition=condition,
             points=points,
+            listing_type=listing_type,
             user_id=user_id,
-            status='pending'
+            status='pending' if listing_type == 'swap' else 'approved'  # Auto-approve donations
         )
         
         db.session.add(item)
@@ -654,7 +670,7 @@ def create_item():
                             'message': f'Failed to upload image: {file.filename}'
                         }), 400
         
-        # Handle bill upload
+        # Handle bill upload (optional for donations)
         if 'bill' in request.files:
             bill_file = request.files['bill']
             if bill_file and allowed_file(bill_file.filename, ALLOWED_DOCUMENT_EXTENSIONS):
@@ -677,16 +693,19 @@ def create_item():
         
         db.session.commit()
         
-        logger.info(f"New item created: {title} by user {user_id}")
+        logger.info(f"New item created: {title} by user {user_id} (type: {listing_type})")
+        
+        message = 'Item submitted successfully! It will be reviewed by our team.' if listing_type == 'swap' else 'Item donated successfully! It is now available for others to claim.'
         
         return jsonify({
             'success': True,
-            'message': 'Item submitted successfully! It will be reviewed by our team.',
+            'message': message,
             'item': {
                 'id': item.id,
                 'title': item.title,
                 'status': item.status,
-                'points': item.points
+                'points': item.points,
+                'listing_type': item.listing_type
             }
         }), 201
         
@@ -716,9 +735,10 @@ def get_items():
         size = request.args.get('size')
         search = request.args.get('search', '').strip()
         status = request.args.get('status', 'approved')
+        listing_type = request.args.get('listing_type', 'swap')
         
         # Build query
-        query = Item.query.filter_by(status=status)
+        query = Item.query.filter_by(status=status, listing_type=listing_type)
         
         if category and category != 'All':
             cat = Category.query.filter_by(name=category).first()
@@ -825,6 +845,75 @@ def get_user_items():
             'message': 'Failed to fetch your items.'
         }), 500
 
+# Donation claim route
+@app.route('/api/items/<int:item_id>/claim', methods=['POST'])
+@login_required
+def claim_donation_item(item_id):
+    try:
+        user_id = session['user_id']
+        user = User.query.get(user_id)
+        
+        item = Item.query.get(item_id)
+        if not item:
+            return jsonify({
+                'success': False,
+                'message': 'Item not found.'
+            }), 404
+        
+        if item.user_id == user_id:
+            return jsonify({
+                'success': False,
+                'message': 'You cannot claim your own item.'
+            }), 400
+        
+        if item.listing_type != 'donation':
+            return jsonify({
+                'success': False,
+                'message': 'This item is not available for donation.'
+            }), 400
+        
+        if item.status != 'approved':
+            return jsonify({
+                'success': False,
+                'message': 'This item is not available for claiming.'
+            }), 400
+        
+        # Process claim
+        item.status = 'claimed'
+        
+        # Create a swap request record for tracking
+        swap_request = SwapRequest(
+            item_id=item_id,
+            requester_id=user_id,
+            owner_id=item.user_id,
+            points_offered=0,
+            message='Donation claim',
+            status='completed'
+        )
+        
+        db.session.add(swap_request)
+        db.session.commit()
+        
+        logger.info(f"Donation claimed: {item_id} by user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Item claimed successfully! Please contact {item.owner.name} to arrange pickup.',
+            'owner_contact': {
+                'name': item.owner.name,
+                'location': item.owner.location,
+                'phone': item.owner.phone if item.owner.phone else None
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Claim item error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to claim item.'
+        }), 500
+
 # Admin Routes
 @app.route('/api/admin/items/pending', methods=['GET'])
 @admin_required
@@ -877,8 +966,9 @@ def approve_item(item_id):
         item.status = 'approved'
         item.updated_at = datetime.utcnow()
         
-        # Award points to the user
-        item.owner.points += 5  # Bonus for approved item
+        # Award points to the user for approved swaps
+        if item.listing_type == 'swap':
+            item.owner.points += 5  # Bonus for approved item
         
         db.session.commit()
         
@@ -967,103 +1057,6 @@ def uploaded_file(filename):
     from flask import send_from_directory
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# Initialize database
-def create_tables():
-    with app.app_context():
-        # Drop all tables first to avoid foreign key issues
-        db.drop_all()
-        
-        # Create all tables
-        db.create_all()
-        
-        # Create default categories
-        default_categories = [
-            'Tops', 'Bottoms', 'Dresses', 'Outerwear', 
-            'Shoes', 'Accessories', 'Bags', 'Jewelry'
-        ]
-        
-        for cat_name in default_categories:
-            category = Category(name=cat_name)
-            db.session.add(category)
-        
-        # Create admin user if not exists
-        admin_email = 'admin@rewear.com'
-        admin = User(
-            email=admin_email,
-            name='Admin',
-            password_hash=generate_password_hash('admin123'),
-            role='admin',
-            points=1000
-        )
-        db.session.add(admin)
-        
-        # Create a test user
-        test_user = User(
-            email='test@rewear.com',
-            name='Test User',
-            password_hash=generate_password_hash('test123'),
-            role='user',
-            points=100
-        )
-        db.session.add(test_user)
-        
-        db.session.commit()
-        
-        # Create some sample items for the carousel
-        sample_items = [
-            {
-                'title': 'Vintage Denim Jacket',
-                'description': 'Classic vintage denim jacket in excellent condition.',
-                'category': 'Outerwear',
-                'type': 'Casual',
-                'size': 'M',
-                'condition': 'Excellent',
-                'user_id': test_user.id
-            },
-            {
-                'title': 'Designer Silk Scarf',
-                'description': 'Beautiful silk scarf from a luxury brand.',
-                'category': 'Accessories',
-                'type': 'Formal',
-                'size': 'One Size',
-                'condition': 'Like New',
-                'user_id': test_user.id
-            },
-            {
-                'title': 'Cotton Summer Dress',
-                'description': 'Light and comfortable summer dress.',
-                'category': 'Dresses',
-                'type': 'Casual',
-                'size': 'S',
-                'condition': 'Good',
-                'user_id': test_user.id
-            }
-        ]
-        
-        for item_data in sample_items:
-            category = Category.query.filter_by(name=item_data['category']).first()
-            if category:
-                points = calculate_item_points(item_data['condition'], item_data['category'])
-                item = Item(
-                    title=item_data['title'],
-                    description=item_data['description'],
-                    category_id=category.id,
-                    type=item_data['type'],
-                    size=item_data['size'],
-                    condition=item_data['condition'],
-                    points=points,
-                    user_id=item_data['user_id'],
-                    status='approved'  # Pre-approve sample items
-                )
-                db.session.add(item)
-        
-        db.session.commit()
-        print("Database initialized with sample data!")
-
-if __name__ == '__main__':
-    create_tables()
-    app.run(debug=True, host='0.0.0.0', port=5000)
-
 # Swap Request Routes
 @app.route('/api/swap-requests', methods=['POST'])
 @login_required
@@ -1099,6 +1092,12 @@ def create_swap_request():
             }), 400
         
         if item.status != 'approved':
+            return jsonify({
+                'success': False,
+                'message': 'This item is not available for swap.'
+            }), 400
+        
+        if item.listing_type != 'swap':
             return jsonify({
                 'success': False,
                 'message': 'This item is not available for swap.'
@@ -1242,9 +1241,22 @@ def accept_swap_request(request_id):
         
         logger.info(f"Swap request accepted: {request_id}")
         
+        # Return contact information for coordination
         return jsonify({
             'success': True,
-            'message': 'Swap request accepted successfully!'
+            'message': 'Swap request accepted successfully!',
+            'contact_info': {
+                'requester': {
+                    'name': requester.name,
+                    'location': requester.location,
+                    'phone': requester.phone
+                },
+                'owner': {
+                    'name': owner.name,
+                    'location': owner.location,
+                    'phone': owner.phone
+                }
+            }
         })
         
     except Exception as e:
@@ -1327,6 +1339,12 @@ def redeem_item_with_points(item_id):
                 'message': 'This item is not available for redemption.'
             }), 400
         
+        if item.listing_type != 'swap':
+            return jsonify({
+                'success': False,
+                'message': 'This item is not available for redemption.'
+            }), 400
+        
         if user.points < item.points:
             return jsonify({
                 'success': False,
@@ -1356,7 +1374,14 @@ def redeem_item_with_points(item_id):
         return jsonify({
             'success': True,
             'message': f'Item redeemed successfully for {item.points} points!',
-            'remaining_points': user.points
+            'remaining_points': user.points,
+            'contact_info': {
+                'owner': {
+                    'name': item.owner.name,
+                    'location': item.owner.location,
+                    'phone': item.owner.phone
+                }
+            }
         })
         
     except Exception as e:
@@ -1409,3 +1434,107 @@ def send_message():
             'success': False,
             'message': 'Failed to send message.'
         }), 500
+
+# Initialize database
+def create_tables():
+    with app.app_context():
+        # Drop all tables first to avoid foreign key issues
+        db.drop_all()
+        
+        # Create all tables
+        db.create_all()
+        
+        # Create default categories
+        default_categories = [
+            'Tops', 'Bottoms', 'Dresses', 'Outerwear', 
+            'Shoes', 'Accessories', 'Bags', 'Jewelry'
+        ]
+        
+        for cat_name in default_categories:
+            category = Category(name=cat_name)
+            db.session.add(category)
+        
+        # Create admin user if not exists
+        admin_email = 'admin@rewear.com'
+        admin = User(
+            email=admin_email,
+            name='Admin',
+            password_hash=generate_password_hash('admin123'),
+            role='admin',
+            points=1000
+        )
+        db.session.add(admin)
+        
+        # Create a test user
+        test_user = User(
+            email='test@rewear.com',
+            name='Test User',
+            password_hash=generate_password_hash('test123'),
+            role='user',
+            points=100,
+            location='New York, NY',
+            phone='+1 (555) 123-4567'
+        )
+        db.session.add(test_user)
+        
+        db.session.commit()
+        
+        # Create some sample items for the carousel
+        sample_items = [
+            {
+                'title': 'Vintage Denim Jacket',
+                'description': 'Classic vintage denim jacket in excellent condition.',
+                'category': 'Outerwear',
+                'type': 'Casual',
+                'size': 'M',
+                'condition': 'Excellent',
+                'listing_type': 'swap',
+                'user_id': test_user.id
+            },
+            {
+                'title': 'Designer Silk Scarf',
+                'description': 'Beautiful silk scarf from a luxury brand.',
+                'category': 'Accessories',
+                'type': 'Formal',
+                'size': 'One Size',
+                'condition': 'Like New',
+                'listing_type': 'swap',
+                'user_id': test_user.id
+            },
+            {
+                'title': 'Cotton Summer Dress',
+                'description': 'Light and comfortable summer dress.',
+                'category': 'Dresses',
+                'type': 'Casual',
+                'size': 'S',
+                'condition': 'Good',
+                'listing_type': 'donation',
+                'user_id': test_user.id
+            }
+        ]
+        
+        for item_data in sample_items:
+            category = Category.query.filter_by(name=item_data['category']).first()
+            if category:
+                points = calculate_item_points(item_data['condition'], item_data['category'], item_data['listing_type'])
+                item = Item(
+                    title=item_data['title'],
+                    description=item_data['description'],
+                    category_id=category.id,
+                    type=item_data['type'],
+                    size=item_data['size'],
+                    condition=item_data['condition'],
+                    points=points,
+                    listing_type=item_data['listing_type'],
+                    user_id=item_data['user_id'],
+                    status='approved'  # Pre-approve sample items
+                )
+                db.session.add(item)
+        
+        db.session.commit()
+        print("Database initialized with sample data including donations!")
+
+if __name__ == '__main__':
+    create_tables()
+    app.run(debug=True, host='0.0.0.0', port=5001)
+# KEEP THIS FILE AS APP.PY
